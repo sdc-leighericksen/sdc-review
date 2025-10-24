@@ -78,16 +78,24 @@
         list._sdcAnimation = { frame: window.requestAnimationFrame(step) };
     }
 
-    function getItemWidth(list, total) {
-        if (!total) {
+    /**
+     * Measures the rendered width of a single carousel item.
+     *
+     * @param {HTMLElement} list
+     * @returns {number}
+     */
+    function getItemWidth(list) {
+        var item = list ? list.querySelector('[data-carousel-item]') : null;
+
+        if (!item) {
             return 0;
         }
 
-        return list.scrollWidth / total;
+        return item.getBoundingClientRect().width;
     }
 
     function getCurrentIndex(list, total) {
-        var itemWidth = getItemWidth(list, total);
+        var itemWidth = getItemWidth(list);
 
         if (!itemWidth) {
             return 0;
@@ -95,6 +103,10 @@
 
         var rawIndex = list.scrollLeft / itemWidth;
         var index = Math.round(rawIndex);
+
+        if (total > 0) {
+            index = ((index % total) + total) % total;
+        }
 
         if (index < 0) {
             index = 0;
@@ -148,7 +160,7 @@
     }
 
     function scrollToIndex(list, carousel, index, duration) {
-        var items = list.querySelectorAll('[data-carousel-item]');
+        var items = list.querySelectorAll('[data-carousel-item]:not([data-carousel-clone])');
         var total = items.length;
 
         if (!total) {
@@ -156,65 +168,155 @@
         }
 
         var targetIndex = Math.max(0, Math.min(index, total - 1));
-        var itemWidth = getItemWidth(list, total);
+        var itemWidth = getItemWidth(list);
         var target = targetIndex * itemWidth;
 
         animateScroll(list, target, duration);
     }
 
-    function createAutoplay(carousel, list, items, delay, duration) {
-        if (!delay || delay < 0 || items.length <= 1) {
+    /**
+     * Clones carousel items to provide a seamless ticker loop.
+     *
+     * @param {HTMLElement} list
+     * @param {Array<HTMLElement>} originals
+     * @returns {Array<HTMLElement>}
+     */
+    function cloneItemsForLoop(list, originals) {
+        var clones = [];
+
+        if (!list || !originals.length) {
+            return clones;
+        }
+
+        if (list.querySelector('[data-carousel-clone]')) {
+            return clones;
+        }
+
+        originals.forEach(function (item) {
+            var clone = item.cloneNode(true);
+            clone.setAttribute('data-carousel-clone', 'true');
+            list.appendChild(clone);
+            clones.push(clone);
+        });
+
+        return clones;
+    }
+
+    /**
+     * Creates a ticker-style autoplay controller.
+     *
+     * TODO: Gracefully bail out when there are fewer cards than visible slots.
+     *
+     * @param {HTMLElement} carousel
+     * @param {HTMLElement} list
+     * @param {number} totalOriginal
+     * @param {number} durationPerCard
+     * @returns {{pause: Function, resume: Function, reset: Function} | null}
+     */
+    function createTickerAutoplay(carousel, list, totalOriginal, durationPerCard) {
+        if (!totalOriginal || totalOriginal <= 1) {
             return null;
         }
 
-        var timer = null;
         var paused = false;
+        var animationId = null;
+        var lastTimestamp = null;
+        var duration = durationPerCard > 0 ? durationPerCard : 5000;
 
-        function stop() {
-            if (timer) {
-                window.clearTimeout(timer);
-                timer = null;
+        function cancelAnimation() {
+            if (animationId) {
+                window.cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        function getLoopWidth(itemWidth) {
+            return itemWidth * totalOriginal;
+        }
+
+        function tick(timestamp) {
+            if (paused || prefersReducedMotion.matches) {
+                lastTimestamp = null;
+                animationId = null;
+                return;
+            }
+
+            var itemWidth = getItemWidth(list);
+
+            if (!itemWidth) {
+                lastTimestamp = timestamp;
+                animationId = window.requestAnimationFrame(tick);
+                return;
+            }
+
+            var loopWidth = getLoopWidth(itemWidth);
+
+            if (!loopWidth) {
+                lastTimestamp = timestamp;
+                animationId = window.requestAnimationFrame(tick);
+                return;
+            }
+
+            if (!lastTimestamp) {
+                lastTimestamp = timestamp;
+            }
+
+            var delta = timestamp - lastTimestamp;
+            var distance = (itemWidth / duration) * delta;
+            var nextLeft = list.scrollLeft + distance;
+
+            if (nextLeft >= loopWidth) {
+                nextLeft = nextLeft % loopWidth;
+            }
+
+            list.scrollLeft = nextLeft;
+            lastTimestamp = timestamp;
+            animationId = window.requestAnimationFrame(tick);
+        }
+
+        function ensureWithinLoop() {
+            var itemWidth = getItemWidth(list);
+            var loopWidth = getLoopWidth(itemWidth);
+
+            if (!loopWidth) {
+                return;
+            }
+
+            if (list.scrollLeft >= loopWidth) {
+                list.scrollLeft = list.scrollLeft % loopWidth;
             }
         }
 
         function schedule() {
-            stop();
+            cancelAnimation();
 
             if (paused || prefersReducedMotion.matches) {
                 return;
             }
 
-            timer = window.setTimeout(function advance() {
-                var total = items.length;
-
-                if (!total) {
-                    return;
-                }
-
-                var currentIndex = getCurrentIndex(list, total);
-                var nextIndex = currentIndex + getSlidesPerView(carousel);
-
-                if (nextIndex >= total) {
-                    nextIndex = 0;
-                }
-
-                scrollToIndex(list, carousel, nextIndex, duration);
-                schedule();
-            }, delay);
+            animationId = window.requestAnimationFrame(tick);
         }
 
         function pause() {
             paused = true;
-            stop();
+            cancelAnimation();
         }
 
         function resume() {
+            if (!paused) {
+                return;
+            }
+
             paused = false;
+            lastTimestamp = null;
             schedule();
         }
 
         function reset() {
+            ensureWithinLoop();
+
             if (!paused) {
+                lastTimestamp = null;
                 schedule();
             }
         }
@@ -224,6 +326,7 @@
         carousel.addEventListener('mouseenter', pause);
         carousel.addEventListener('mouseleave', function () {
             paused = false;
+            lastTimestamp = null;
             schedule();
         });
         carousel.addEventListener('focusin', pause);
@@ -233,18 +336,21 @@
             }
 
             paused = false;
+            lastTimestamp = null;
             schedule();
         });
         carousel.addEventListener('pointerdown', pause);
         carousel.addEventListener('pointerup', function () {
             paused = false;
+            lastTimestamp = null;
             schedule();
         });
 
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) {
-                stop();
+                cancelAnimation();
             } else if (!paused) {
+                lastTimestamp = null;
                 schedule();
             }
         });
@@ -252,8 +358,9 @@
         if (prefersReducedMotion.addEventListener) {
             prefersReducedMotion.addEventListener('change', function (event) {
                 if (event.matches) {
-                    stop();
+                    cancelAnimation();
                 } else if (!paused) {
+                    lastTimestamp = null;
                     schedule();
                 }
             });
@@ -268,7 +375,7 @@
 
     function initCarousel(carousel) {
         var list = carousel.querySelector('[data-carousel-list]');
-        var items = list ? list.querySelectorAll('[data-carousel-item]') : [];
+        var items = list ? list.querySelectorAll('[data-carousel-item]:not([data-carousel-clone])') : [];
 
         if (!list || !items.length) {
             return;
@@ -278,9 +385,22 @@
         var dots = carousel.querySelectorAll('[data-carousel-dot]');
         var dotsArray = Array.prototype.slice.call(dots);
         var transitionDuration = parseInt(carousel.getAttribute('data-transition-duration'), 10) || 0;
-        var autoplayDelay = parseInt(carousel.getAttribute('data-autoplay-delay'), 10) || 0;
+        var autoplayDelayAttribute = carousel.getAttribute('data-autoplay-delay');
+        var parsedAutoplayDelay = autoplayDelayAttribute !== null ? parseInt(autoplayDelayAttribute, 10) : null;
         var rafId;
-        var autoplay = createAutoplay(carousel, list, items, autoplayDelay, transitionDuration);
+        var originals = Array.prototype.slice.call(items);
+
+        cloneItemsForLoop(list, originals);
+
+        var autoplay = null;
+        var tickerDuration = 5000;
+
+        if (parsedAutoplayDelay === null) {
+            autoplay = createTickerAutoplay(carousel, list, originals.length, tickerDuration);
+        } else if (parsedAutoplayDelay > 0) {
+            tickerDuration = parsedAutoplayDelay;
+            autoplay = createTickerAutoplay(carousel, list, originals.length, tickerDuration);
+        }
 
         function handleScroll() {
             if (rafId) {
