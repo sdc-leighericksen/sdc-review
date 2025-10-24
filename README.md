@@ -8,6 +8,7 @@ SDC GMB Review Badge is a lightweight WordPress plugin from [Stoke Design Co](ht
 - Cache API responses to stay within quota limits while keeping data fresh.
 - Customise the number of stars, the star fill colour, and the text/icon accent colour.
 - Accessible, responsive SVG badge markup that works in any theme.
+- Optional reviews carousel with keyboard-friendly controls and reduced-motion support.
 - Shortcode aliases for backward compatibility with previous plugin versions.
 
 ## Requirements
@@ -65,6 +66,40 @@ Add the badge anywhere shortcodes are supported (pages, posts, widgets, block ed
 ```
 
 For convenience, the plugin still recognises the legacy shortcodes `[sdc_gmb_badge]` and `[stoke_gbp_badge]`, both of which resolve to the same output.
+
+### Reviews carousel shortcode
+
+Display a responsive slider of recent Google reviews with:
+
+```text
+[sdc_gmb_reviews_carousel]
+```
+
+| Attribute         | Description                                                                                 | Default (from settings) |
+|-------------------|---------------------------------------------------------------------------------------------|-------------------------|
+| `place_id`        | Override the configured Place ID.                                                           | Saved Place ID          |
+| `api_key`         | Override the configured API key.                                                            | Saved API key           |
+| `cache_minutes`   | Minutes to cache the Places API response.                                                   | Saved cache duration    |
+| `min_rating`      | Filter out reviews below this rating (0–5, decimal friendly).                               | Saved minimum rating    |
+| `reviews_limit`   | Maximum number of reviews to render (1–8; Google returns up to 8 recent reviews).           | Saved reviews limit     |
+| `slides_desktop`  | Number of cards visible on desktop breakpoints (~960px and up).                              | Saved desktop slides    |
+| `slides_tablet`   | Number of cards visible on tablet breakpoints (~600px and up).                               | Saved tablet slides     |
+| `slides_mobile`   | Number of cards visible below 600px.                                                         | Saved mobile slides     |
+
+The shortcode outputs semantic markup that includes:
+
+- `role="region"` and a polite live region announcing the visible range for assistive tech.
+- Previous/next buttons with disabled states, smooth scrolling, and reduced-motion fallbacks.
+- CSS custom properties and data attributes (`data-slides-desktop`, etc.) reflecting the per-breakpoint slide counts for further styling hooks.
+
+If no reviews meet the filter criteria, a translated fallback message is displayed instead of the carousel.
+
+### Elementor integration
+
+1. Add the **Shortcode** widget to your Elementor layout.
+2. Paste either `[sdc_gmb_review_badge]` or `[sdc_gmb_reviews_carousel]` into the widget content.
+3. Adjust the widget width/padding as needed—responsive sizing is controlled via the shortcode attributes and plugin settings.
+4. Publish or update the page and clear any caches so the Places API data can refresh.
 
 ## Styling tips
 
