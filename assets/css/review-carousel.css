@@ -6,76 +6,24 @@
     --sdc-review-card-background: #f4f6f9;
     --sdc-review-card-text: #1e2a3a;
     --sdc-review-card-meta: #4d5d72;
-    --sdc-review-dot-color: #1e2a3a;
     --sdc-review-current-slides: var(--sdc-review-slides-mobile);
     display: flex;
     flex-direction: column;
     gap: 1rem;
 }
 
-.sdc-review-carousel__viewport {
-    position: relative;
-    overflow: hidden;
-}
 
-.sdc-review-carousel__list,
-.sdc-review-carousel__track {
-    display: flex;
+.sdc-review-carousel__list {
+    display: grid;
     gap: var(--sdc-review-gap);
     list-style: none;
     padding: 0;
     margin: 0;
-    width: max-content;
-    min-width: 100%;
-}
-
-.sdc-review-carousel__list {
-    will-change: transform;
+    grid-template-columns: repeat(var(--sdc-review-current-slides), minmax(0, 1fr));
 }
 
 .sdc-review-carousel__item {
-    flex: 0 0 calc((100% - (var(--sdc-review-current-slides) - 1) * var(--sdc-review-gap)) / var(--sdc-review-current-slides));
-}
-
-.sdc-review-carousel__dots {
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-    margin: 0;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.sdc-review-carousel:hover .sdc-review-carousel__dots,
-.sdc-review-carousel:focus-within .sdc-review-carousel__dots {
-    opacity: 1;
-}
-
-.sdc-review-carousel__dot {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 999px;
-    background: var(--sdc-review-dot-color);
-    opacity: 0.4;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-.sdc-review-carousel__dot.is-active {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.sdc-review-carousel__dot:hover {
-    opacity: 1;
-}
-
-.sdc-review-carousel__dot:focus-visible {
-    outline: 2px solid var(--sdc-review-dot-color);
-    outline-offset: 2px;
-    opacity: 1;
+    display: block;
 }
 
 .sdc-review-card {
@@ -120,10 +68,6 @@
     opacity: 0.6;
 }
 
-.sdc-review-carousel__status {
-    margin: 0;
-}
-
 .sdc-review-carousel--empty,
 .sdc-review-carousel--error {
     background: var(--sdc-review-card-background);
@@ -161,11 +105,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sdc-review-carousel__dot {
+    .sdc-review-card {
         transition: none;
-    }
-
-    .sdc-review-carousel__list {
-        scroll-behavior: auto;
     }
 }

@@ -927,8 +927,7 @@ function sdc_rc_enqueue_badge_style() {
  * Register front-end assets for the reviews carousel.
  */
 function sdc_rc_register_reviews_carousel_assets() {
-    $style_handle  = 'sdc-review-carousel';
-    $script_handle = 'sdc-review-carousel';
+    $style_handle = 'sdc-review-carousel';
 
     if ( ! wp_style_is( $style_handle, 'registered' ) ) {
         wp_register_style(
@@ -939,25 +938,6 @@ function sdc_rc_register_reviews_carousel_assets() {
         );
     }
 
-    if ( ! wp_script_is( $script_handle, 'registered' ) ) {
-        wp_register_script(
-            $script_handle,
-            plugins_url( 'assets/js/review-carousel.js', __FILE__ ),
-            array(),
-            SDC_REVIEW_CAROUSEL_VERSION,
-            true
-        );
-
-        wp_script_add_data( $script_handle, 'strategy', 'defer' );
-
-        wp_localize_script(
-            $script_handle,
-            'sdcReviewCarouselL10n',
-            array(
-                'status' => __( 'Showing reviews %1$s–%2$s of %3$s', 'sdc-review-carousel' ),
-            )
-        );
-    }
 }
 add_action( 'wp_enqueue_scripts', 'sdc_rc_register_reviews_carousel_assets' );
 
@@ -1021,16 +1001,6 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
         $reviews_limit = 8;
     }
 
-    if ( $autoplay_delay < 0 ) {
-        $autoplay_delay = 0;
-    }
-
-    if ( $transition_duration < 0 ) {
-        $transition_duration = 0;
-    } elseif ( $transition_duration > 2000 ) {
-        $transition_duration = 2000;
-    }
-
     if ( empty( $review_background_color ) ) {
         $review_background_color = $defaults['review_background_color'];
     }
@@ -1058,7 +1028,6 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
         '--sdc-review-card-background:' . $review_background_color,
         '--sdc-review-card-text:' . $review_text_color,
         '--sdc-review-card-meta:' . $review_meta_color,
-        '--sdc-review-dot-color:' . $review_dot_color,
         '--sdc-review-gap:' . $review_gap . 'px',
     );
 
@@ -1093,10 +1062,6 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
             }
 
             $reviews[] = $review;
-
-            if ( count( $reviews ) >= $reviews_limit ) {
-                break;
-            }
         }
     }
 
@@ -1104,34 +1069,32 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
         return '<div class="sdc-review-carousel sdc-review-carousel--empty"' . $style_attribute . '><p>' . esc_html__( 'No reviews match the current filters yet. Check back soon!', 'sdc-review-carousel' ) . '</p></div>';
     }
 
-    wp_enqueue_script( 'sdc-review-carousel' );
+    $max_display = min( $reviews_limit, count( $reviews ) );
 
-    $carousel_id = 'sdc-review-carousel-' . wp_unique_id();
-    $list_id     = $carousel_id . '-list';
-    $status_id   = $carousel_id . '-status';
-    $total_items = count( $reviews );
+    if ( $max_display < 1 ) {
+        $max_display = 1;
+    }
+
+    $display_count = ( $max_display > 1 ) ? wp_rand( 1, $max_display ) : 1;
+
+    if ( count( $reviews ) > 1 ) {
+        shuffle( $reviews );
+    }
+
+    $selected_reviews = array_slice( $reviews, 0, $display_count );
+    $total_items      = count( $selected_reviews );
 
     $classes = array(
         'sdc-review-carousel',
-        'sdc-review-carousel--desktop-' . $slides_desktop,
-        'sdc-review-carousel--tablet-' . $slides_tablet,
-        'sdc-review-carousel--mobile-' . $slides_mobile,
     );
 
     $items_markup = '';
 
-    foreach ( $reviews as $index => $review ) {
+    foreach ( $selected_reviews as $index => $review ) {
         $author    = isset( $review['author_name'] ) ? sanitize_text_field( $review['author_name'] ) : '';
         $rating    = isset( $review['rating'] ) ? (float) $review['rating'] : 0.0;
         $text      = isset( $review['text'] ) ? sanitize_textarea_field( $review['text'] ) : '';
         $timestamp = isset( $review['time'] ) ? absint( $review['time'] ) : 0;
-
-        $item_label = sprintf(
-            /* translators: 1: review position, 2: total reviews */
-            __( 'Review %1$s of %2$s', 'sdc-review-carousel' ),
-            number_format_i18n( $index + 1 ),
-            number_format_i18n( $total_items )
-        );
 
         $rating_label = sprintf(
             /* translators: %s: star rating value */
@@ -1145,7 +1108,7 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
             $date_markup = '<time class="sdc-review-card__date" datetime="' . esc_attr( gmdate( 'c', $timestamp ) ) . '">' . esc_html( date_i18n( get_option( 'date_format' ), $timestamp ) ) . '</time>';
         }
 
-        $items_markup .= '<li class="sdc-review-carousel__item" data-carousel-item role="group" aria-label="' . esc_attr( $item_label ) . '">';
+        $items_markup .= '<li class="sdc-review-carousel__item">';
         $items_markup .= '<article class="sdc-review-card">';
         $items_markup .= '<header class="sdc-review-card__header">';
         $items_markup .= '<div class="sdc-review-card__rating" aria-label="' . esc_attr( $rating_label ) . '" role="img">' . sdc_rc_get_stars_markup( $rating, 5, $star_color ) . '</div>';
@@ -1177,47 +1140,10 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
         $items_markup .= '</li>';
     }
 
-    $region_label   = __( 'Google reviews carousel', 'sdc-review-carousel' );
-    $nav_group_name = __( 'Review navigation', 'sdc-review-carousel' );
+    $region_label = __( 'Google reviews', 'sdc-review-carousel' );
 
-    $markup  = '<section class="' . esc_attr( implode( ' ', $classes ) ) . '" role="region" aria-label="' . esc_attr( $region_label ) . '" data-slides-desktop="' . esc_attr( $slides_desktop ) . '" data-slides-tablet="' . esc_attr( $slides_tablet ) . '" data-slides-mobile="' . esc_attr( $slides_mobile ) . '" data-carousel-total="' . esc_attr( $total_items ) . '" data-autoplay-delay="' . esc_attr( $autoplay_delay ) . '" data-transition-duration="' . esc_attr( $transition_duration ) . '"' . $style_attribute . '>';
-    $markup .= '<div class="sdc-review-carousel__viewport">';
-    $markup .= '<ul class="sdc-review-carousel__list" id="' . esc_attr( $list_id ) . '" data-carousel-list>' . $items_markup . '</ul>';
-    $markup .= '</div>';
-
-    $dots_markup = '';
-
-    for ( $i = 0; $i < $total_items; $i++ ) {
-        $dot_classes   = array( 'sdc-review-carousel__dot' );
-        $aria_current  = '';
-
-        if ( 0 === $i ) {
-            $dot_classes[] = 'is-active';
-            $aria_current  = ' aria-current="true"';
-        }
-
-        $dot_label = sprintf(
-            /* translators: %s: review index number. */
-            __( 'Go to review %s', 'sdc-review-carousel' ),
-            number_format_i18n( $i + 1 )
-        );
-
-        $dots_markup .= '<button type="button" class="' . esc_attr( implode( ' ', $dot_classes ) ) . '" data-carousel-dot data-index="' . esc_attr( $i ) . '" aria-controls="' . esc_attr( $list_id ) . '"' . $aria_current . '><span class="screen-reader-text">' . esc_html( $dot_label ) . '</span></button>';
-    }
-
-    if ( '' !== $dots_markup ) {
-        $markup .= '<div class="sdc-review-carousel__dots" data-carousel-dots role="group" aria-label="' . esc_attr( $nav_group_name ) . '">' . $dots_markup . '</div>';
-    }
-
-    $markup .= '<p id="' . esc_attr( $status_id ) . '" class="sdc-review-carousel__status screen-reader-text" aria-live="polite" data-carousel-live>';
-    $markup .= sprintf(
-        /* translators: 1: starting review index, 2: ending review index, 3: total reviews */
-        esc_html__( 'Showing reviews %1$s–%2$s of %3$s', 'sdc-review-carousel' ),
-        1,
-        min( $slides_mobile, $total_items ),
-        $total_items
-    );
-    $markup .= '</p>';
+    $markup  = '<section class="' . esc_attr( implode( ' ', $classes ) ) . '" role="region" aria-label="' . esc_attr( $region_label ) . '"' . $style_attribute . '>';
+    $markup .= '<ul class="sdc-review-carousel__list">' . $items_markup . '</ul>';
     $markup .= '</section>';
 
     return $markup;
