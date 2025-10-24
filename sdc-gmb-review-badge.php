@@ -338,14 +338,14 @@ function sdc_gmb_render_settings_page() {
 }
 
 /**
- * Fetch rating data from Google Places API with caching.
+ * Fetch rating and review metadata from Google Places API with caching.
  *
  * @param string $place_id      Place ID.
  * @param string $api_key       API key.
  * @param int    $cache_minutes Cache duration in minutes.
  * @return array|WP_Error
  */
-function sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes ) {
+function sdc_gmb_get_place_details( $place_id, $api_key, $cache_minutes ) {
     $place_id = trim( $place_id );
     $api_key  = trim( $api_key );
 
@@ -360,7 +360,15 @@ function sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes ) {
         $cached = get_transient( $transient_key );
 
         if ( false !== $cached ) {
-            return $cached;
+            if ( is_array( $cached ) ) {
+                if ( ! isset( $cached['reviews'] ) || ! is_array( $cached['reviews'] ) ) {
+                    $cached['reviews'] = array();
+                }
+
+                return $cached;
+            }
+
+            delete_transient( $transient_key );
         }
     }
 
@@ -368,7 +376,8 @@ function sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes ) {
         add_query_arg(
             array(
                 'place_id' => $place_id,
-                'fields'   => 'rating,user_ratings_total',
+                // TODO: Confirm if specifying sub-fields reduces quota usage for the reviews payload.
+                'fields'   => 'rating,user_ratings_total,reviews',
                 'key'      => $api_key,
             ),
             'https://maps.googleapis.com/maps/api/place/details/json'
@@ -407,9 +416,27 @@ function sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes ) {
         return new WP_Error( 'sdc_gmb_missing_fields', __( 'Reviews unavailable', 'sdc-gmb-review-badge' ) );
     }
 
+    $reviews = array();
+
+    if ( ! empty( $data['result']['reviews'] ) && is_array( $data['result']['reviews'] ) ) {
+        foreach ( array_slice( $data['result']['reviews'], 0, 8 ) as $review ) {
+            if ( ! is_array( $review ) ) {
+                continue;
+            }
+
+            $reviews[] = array(
+                'author_name' => isset( $review['author_name'] ) ? sanitize_text_field( $review['author_name'] ) : '',
+                'rating'      => isset( $review['rating'] ) ? (float) $review['rating'] : 0.0,
+                'text'        => isset( $review['text'] ) ? sanitize_textarea_field( $review['text'] ) : '',
+                'time'        => isset( $review['time'] ) ? absint( $review['time'] ) : 0,
+            );
+        }
+    }
+
     $result = array(
         'rating'             => (float) $data['result']['rating'],
         'user_ratings_total' => (int) $data['result']['user_ratings_total'],
+        'reviews'            => $reviews,
     );
 
     if ( $cache_minutes > 0 ) {
@@ -417,6 +444,18 @@ function sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes ) {
     }
 
     return $result;
+}
+
+/**
+ * Backwards-compatible helper for existing integrations fetching rating data only.
+ *
+ * @param string $place_id      Place ID.
+ * @param string $api_key       API key.
+ * @param int    $cache_minutes Cache duration in minutes.
+ * @return array|WP_Error
+ */
+function sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes ) {
+    return sdc_gmb_get_place_details( $place_id, $api_key, $cache_minutes );
 }
 
 /**
@@ -529,8 +568,19 @@ function sdc_gmb_render_badge_shortcode( $atts ) {
         $accent_color = sdc_gmb_get_default_options()['accent_color'];
     }
 
-    $data      = sdc_gmb_get_rating_data( $place_id, $api_key, $cache_minutes );
+    $data      = sdc_gmb_get_place_details( $place_id, $api_key, $cache_minutes );
     $has_error = is_wp_error( $data );
+
+    if ( ! $has_error && is_array( $data ) ) {
+        $data = wp_parse_args(
+            $data,
+            array(
+                'rating'             => 0,
+                'user_ratings_total' => 0,
+                'reviews'            => array(),
+            )
+        );
+    }
 
     $rating_value = $has_error ? 0 : (float) $data['rating'];
     $total        = $has_error ? 0 : (int) $data['user_ratings_total'];
