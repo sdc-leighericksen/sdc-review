@@ -3,7 +3,7 @@
  * Plugin Name: SDC GMB Review Badge
  * Plugin URI: https://stokedesign.co
  * Description: Display a Google Business Profile rating badge anywhere on your site via shortcode with configurable styling, caching, and accessible markup.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Stoke Design Co
  * Author URI: https://stokedesign.co
  * Text Domain: sdc-gmb-review-badge
@@ -12,6 +12,10 @@
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
+}
+
+if ( ! defined( 'SDC_GMB_REVIEW_BADGE_VERSION' ) ) {
+    define( 'SDC_GMB_REVIEW_BADGE_VERSION', '1.2.0' );
 }
 
 /**
@@ -665,7 +669,7 @@ function sdc_gmb_enqueue_badge_style() {
     $handle             = 'sdc-gmb-review-badge';
 
     if ( ! wp_style_is( $handle, 'registered' ) ) {
-        wp_register_style( $handle, false, array(), '1.1.0' );
+        wp_register_style( $handle, false, array(), SDC_GMB_REVIEW_BADGE_VERSION );
     }
 
     if ( ! wp_style_is( $handle, 'enqueued' ) ) {
@@ -687,6 +691,233 @@ function sdc_gmb_enqueue_badge_style() {
         wp_add_inline_style( $handle, $css );
         $style_added = true;
     }
+}
+
+/**
+ * Register front-end assets for the reviews carousel.
+ */
+function sdc_gmb_register_reviews_carousel_assets() {
+    $style_handle  = 'sdc-gmb-reviews-carousel';
+    $script_handle = 'sdc-gmb-reviews-carousel';
+
+    if ( ! wp_style_is( $style_handle, 'registered' ) ) {
+        wp_register_style(
+            $style_handle,
+            plugins_url( 'assets/css/review-carousel.css', __FILE__ ),
+            array(),
+            SDC_GMB_REVIEW_BADGE_VERSION
+        );
+    }
+
+    if ( ! wp_script_is( $script_handle, 'registered' ) ) {
+        wp_register_script(
+            $script_handle,
+            plugins_url( 'assets/js/review-carousel.js', __FILE__ ),
+            array(),
+            SDC_GMB_REVIEW_BADGE_VERSION,
+            true
+        );
+
+        wp_script_add_data( $script_handle, 'strategy', 'defer' );
+
+        wp_localize_script(
+            $script_handle,
+            'sdcGmbCarouselL10n',
+            array(
+                'status' => __( 'Showing reviews %1$s–%2$s of %3$s', 'sdc-gmb-review-badge' ),
+            )
+        );
+    }
+}
+add_action( 'wp_enqueue_scripts', 'sdc_gmb_register_reviews_carousel_assets' );
+
+/**
+ * Render the reviews carousel shortcode.
+ *
+ * @param array $atts Shortcode attributes.
+ * @return string
+ */
+function sdc_gmb_render_reviews_carousel_shortcode( $atts ) {
+    $options = sdc_gmb_get_options();
+
+    $atts = shortcode_atts(
+        array(
+            'place_id'      => $options['place_id'],
+            'api_key'       => $options['api_key'],
+            'cache_minutes' => $options['cache_minutes'],
+            'min_rating'    => $options['min_rating'],
+            'reviews_limit' => $options['reviews_limit'],
+            'slides_desktop'=> $options['slides_desktop'],
+            'slides_tablet' => $options['slides_tablet'],
+            'slides_mobile' => $options['slides_mobile'],
+        ),
+        $atts,
+        'sdc_gmb_reviews_carousel'
+    );
+
+    $place_id      = sanitize_text_field( $atts['place_id'] );
+    $api_key       = sanitize_text_field( $atts['api_key'] );
+    $cache_minutes = absint( $atts['cache_minutes'] );
+    $min_rating    = (float) $atts['min_rating'];
+    $reviews_limit = absint( $atts['reviews_limit'] );
+    $slides_desktop = max( 1, absint( $atts['slides_desktop'] ) );
+    $slides_tablet  = max( 1, absint( $atts['slides_tablet'] ) );
+    $slides_mobile  = max( 1, absint( $atts['slides_mobile'] ) );
+
+    if ( $min_rating < 0 ) {
+        $min_rating = 0;
+    } elseif ( $min_rating > 5 ) {
+        $min_rating = 5;
+    }
+
+    if ( $reviews_limit < 1 ) {
+        $reviews_limit = 1;
+    } elseif ( $reviews_limit > 8 ) {
+        $reviews_limit = 8;
+    }
+
+    wp_enqueue_style( 'sdc-gmb-reviews-carousel' );
+
+    $data = sdc_gmb_get_place_details( $place_id, $api_key, $cache_minutes );
+
+    if ( is_wp_error( $data ) ) {
+        return '<div class="sdc-gmb-carousel sdc-gmb-carousel--error"><p>' . esc_html__( 'Reviews unavailable.', 'sdc-gmb-review-badge' ) . '</p></div>';
+    }
+
+    $star_color = sanitize_hex_color( $options['star_color'] );
+
+    if ( empty( $star_color ) ) {
+        $star_color = sdc_gmb_get_default_options()['star_color'];
+    }
+
+    $reviews = array();
+
+    if ( ! empty( $data['reviews'] ) && is_array( $data['reviews'] ) ) {
+        foreach ( $data['reviews'] as $review ) {
+            if ( ! is_array( $review ) ) {
+                continue;
+            }
+
+            $rating = isset( $review['rating'] ) ? (float) $review['rating'] : 0.0;
+
+            if ( $rating < $min_rating ) {
+                continue;
+            }
+
+            $reviews[] = $review;
+
+            if ( count( $reviews ) >= $reviews_limit ) {
+                break;
+            }
+        }
+    }
+
+    if ( empty( $reviews ) ) {
+        return '<div class="sdc-gmb-carousel sdc-gmb-carousel--empty"><p>' . esc_html__( 'No reviews match the current filters yet. Check back soon!', 'sdc-gmb-review-badge' ) . '</p></div>';
+    }
+
+    wp_enqueue_script( 'sdc-gmb-reviews-carousel' );
+
+    $carousel_id = 'sdc-gmb-carousel-' . wp_unique_id();
+    $list_id     = $carousel_id . '-list';
+    $status_id   = $carousel_id . '-status';
+    $total_items = count( $reviews );
+
+    $classes = array(
+        'sdc-gmb-carousel',
+        'sdc-gmb-carousel--desktop-' . $slides_desktop,
+        'sdc-gmb-carousel--tablet-' . $slides_tablet,
+        'sdc-gmb-carousel--mobile-' . $slides_mobile,
+    );
+
+    $style_attribute = sprintf(
+        ' style="--sdc-gmb-slides-desktop:%1$d;--sdc-gmb-slides-tablet:%2$d;--sdc-gmb-slides-mobile:%3$d;"',
+        $slides_desktop,
+        $slides_tablet,
+        $slides_mobile
+    );
+
+    $items_markup = '';
+
+    foreach ( $reviews as $index => $review ) {
+        $author    = isset( $review['author_name'] ) ? sanitize_text_field( $review['author_name'] ) : '';
+        $rating    = isset( $review['rating'] ) ? (float) $review['rating'] : 0.0;
+        $text      = isset( $review['text'] ) ? sanitize_textarea_field( $review['text'] ) : '';
+        $timestamp = isset( $review['time'] ) ? absint( $review['time'] ) : 0;
+
+        $item_label = sprintf(
+            /* translators: 1: review position, 2: total reviews */
+            __( 'Review %1$s of %2$s', 'sdc-gmb-review-badge' ),
+            number_format_i18n( $index + 1 ),
+            number_format_i18n( $total_items )
+        );
+
+        $rating_label = sprintf(
+            /* translators: %s: star rating value */
+            __( 'Rated %s out of 5', 'sdc-gmb-review-badge' ),
+            number_format_i18n( round( $rating, 1 ), 1 )
+        );
+
+        $date_markup = '';
+
+        if ( $timestamp > 0 ) {
+            $date_markup = '<time class="sdc-gmb-review-card__date" datetime="' . esc_attr( gmdate( 'c', $timestamp ) ) . '">' . esc_html( date_i18n( get_option( 'date_format' ), $timestamp ) ) . '</time>';
+        }
+
+        $items_markup .= '<li class="sdc-gmb-carousel__item" data-carousel-item role="group" aria-label="' . esc_attr( $item_label ) . '">';
+        $items_markup .= '<article class="sdc-gmb-review-card">';
+        $items_markup .= '<header class="sdc-gmb-review-card__header">';
+        $items_markup .= '<div class="sdc-gmb-review-card__rating" aria-label="' . esc_attr( $rating_label ) . '" role="img">' . sdc_gmb_get_stars_markup( $rating, 5, $star_color ) . '</div>';
+
+        if ( '' !== $author || '' !== $date_markup ) {
+            $items_markup .= '<p class="sdc-gmb-review-card__meta">';
+
+            if ( '' !== $author ) {
+                $items_markup .= '<span class="sdc-gmb-review-card__author">' . esc_html( $author ) . '</span>';
+            }
+
+            if ( '' !== $author && '' !== $date_markup ) {
+                $items_markup .= '<span class="sdc-gmb-review-card__separator" aria-hidden="true">&bull;</span>';
+            }
+
+            if ( '' !== $date_markup ) {
+                $items_markup .= $date_markup;
+            }
+
+            $items_markup .= '</p>';
+        }
+
+        if ( '' !== $text ) {
+            $items_markup .= '<p class="sdc-gmb-review-card__text">' . esc_html( $text ) . '</p>';
+        }
+
+        $items_markup .= '</header>';
+        $items_markup .= '</article>';
+        $items_markup .= '</li>';
+    }
+
+    $region_label = __( 'Google reviews carousel', 'sdc-gmb-review-badge' );
+
+    $markup  = '<section class="' . esc_attr( implode( ' ', $classes ) ) . '" role="region" aria-label="' . esc_attr( $region_label ) . '" data-slides-desktop="' . esc_attr( $slides_desktop ) . '" data-slides-tablet="' . esc_attr( $slides_tablet ) . '" data-slides-mobile="' . esc_attr( $slides_mobile ) . '" data-carousel-total="' . esc_attr( $total_items ) . '"' . $style_attribute . '>';
+    $markup .= '<div class="sdc-gmb-carousel__controls">';
+    $markup .= '<button type="button" class="sdc-gmb-carousel__button sdc-gmb-carousel__button--prev" data-carousel-prev aria-controls="' . esc_attr( $list_id ) . '">' . esc_html__( 'Previous reviews', 'sdc-gmb-review-badge' ) . '</button>';
+    $markup .= '<button type="button" class="sdc-gmb-carousel__button sdc-gmb-carousel__button--next" data-carousel-next aria-controls="' . esc_attr( $list_id ) . '">' . esc_html__( 'Next reviews', 'sdc-gmb-review-badge' ) . '</button>';
+    $markup .= '</div>';
+    $markup .= '<div class="sdc-gmb-carousel__viewport">';
+    $markup .= '<ul class="sdc-gmb-carousel__list" id="' . esc_attr( $list_id ) . '" data-carousel-list>' . $items_markup . '</ul>';
+    $markup .= '</div>';
+    $markup .= '<p id="' . esc_attr( $status_id ) . '" class="sdc-gmb-carousel__status screen-reader-text" aria-live="polite" data-carousel-live>';
+    $markup .= sprintf(
+        /* translators: 1: starting review index, 2: ending review index, 3: total reviews */
+        esc_html__( 'Showing reviews %1$s–%2$s of %3$s', 'sdc-gmb-review-badge' ),
+        1,
+        min( $slides_mobile, $total_items ),
+        $total_items
+    );
+    $markup .= '</p>';
+    $markup .= '</section>';
+
+    return $markup;
 }
 
 /**
@@ -831,6 +1062,7 @@ function sdc_gmb_render_badge_shortcode( $atts ) {
 
     return $badge;
 }
+add_shortcode( 'sdc_gmb_reviews_carousel', 'sdc_gmb_render_reviews_carousel_shortcode' );
 add_shortcode( 'sdc_gmb_review_badge', 'sdc_gmb_render_badge_shortcode' );
 add_shortcode( 'sdc_gmb_badge', 'sdc_gmb_render_badge_shortcode' );
 add_shortcode( 'stoke_gbp_badge', 'sdc_gmb_render_badge_shortcode' );
