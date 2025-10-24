@@ -18,6 +18,10 @@ if ( ! defined( 'SDC_REVIEW_CAROUSEL_VERSION' ) ) {
     define( 'SDC_REVIEW_CAROUSEL_VERSION', '1.4.0' );
 }
 
+if ( ! defined( 'SDC_REVIEW_CAROUSEL_MAX_REVIEWS' ) ) {
+    define( 'SDC_REVIEW_CAROUSEL_MAX_REVIEWS', 20 );
+}
+
 /**
  * Load plugin text domain.
  */
@@ -45,7 +49,7 @@ function sdc_rc_get_default_options() {
         'review_dot_color'        => '#1E2A3A',
         'cache_minutes' => 720,
         'min_rating'    => 0.0,
-        'reviews_limit'        => 6,
+        'reviews_limit'        => SDC_REVIEW_CAROUSEL_MAX_REVIEWS,
         'slides_desktop'       => 3,
         'slides_tablet'        => 2,
         'slides_mobile'        => 1,
@@ -357,9 +361,9 @@ function sdc_rc_sanitize_options( $input ) {
 
     if ( $sanitized['reviews_limit'] < 1 ) {
         $sanitized['reviews_limit'] = $defaults['reviews_limit'];
-    } elseif ( $sanitized['reviews_limit'] > 10 ) {
+    } elseif ( $sanitized['reviews_limit'] > SDC_REVIEW_CAROUSEL_MAX_REVIEWS ) {
         // TODO: Confirm maximum reviews supported without pagination once API usage requirements are confirmed.
-        $sanitized['reviews_limit'] = 10;
+        $sanitized['reviews_limit'] = SDC_REVIEW_CAROUSEL_MAX_REVIEWS;
     }
 
     $slide_caps = array(
@@ -607,7 +611,8 @@ function sdc_rc_render_reviews_limit_field() {
     $options = sdc_rc_get_options();
 
     printf(
-        '<input type="number" min="1" max="10" name="sdc_review_carousel_options[reviews_limit]" id="sdc-review-reviews-limit" value="%d" />',
+        '<input type="number" min="1" max="%1$d" name="sdc_review_carousel_options[reviews_limit]" id="sdc-review-reviews-limit" value="%2$d" />',
+        absint( SDC_REVIEW_CAROUSEL_MAX_REVIEWS ),
         absint( $options['reviews_limit'] )
     );
 
@@ -811,6 +816,7 @@ function sdc_rc_get_place_details( $place_id, $api_key, $cache_minutes ) {
                 'place_id' => $place_id,
                 // TODO: Confirm if specifying sub-fields reduces quota usage for the reviews payload.
                 'fields'   => 'rating,user_ratings_total,reviews',
+                'reviews_max_results' => SDC_REVIEW_CAROUSEL_MAX_REVIEWS,
                 'key'      => $api_key,
             ),
             'https://maps.googleapis.com/maps/api/place/details/json'
@@ -852,7 +858,7 @@ function sdc_rc_get_place_details( $place_id, $api_key, $cache_minutes ) {
     $reviews = array();
 
     if ( ! empty( $data['result']['reviews'] ) && is_array( $data['result']['reviews'] ) ) {
-        foreach ( array_slice( $data['result']['reviews'], 0, 8 ) as $review ) {
+        foreach ( array_slice( $data['result']['reviews'], 0, SDC_REVIEW_CAROUSEL_MAX_REVIEWS ) as $review ) {
             if ( ! is_array( $review ) ) {
                 continue;
             }
@@ -997,8 +1003,8 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
 
     if ( $reviews_limit < 1 ) {
         $reviews_limit = 1;
-    } elseif ( $reviews_limit > 8 ) {
-        $reviews_limit = 8;
+    } elseif ( $reviews_limit > SDC_REVIEW_CAROUSEL_MAX_REVIEWS ) {
+        $reviews_limit = SDC_REVIEW_CAROUSEL_MAX_REVIEWS;
     }
 
     if ( empty( $review_background_color ) ) {
@@ -1075,14 +1081,18 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
         $max_display = 1;
     }
 
-    $display_count = ( $max_display > 1 ) ? wp_rand( 1, $max_display ) : 1;
+    $desired_display = max( $slides_desktop, $slides_tablet, $slides_mobile );
+
+    if ( $desired_display < 1 ) {
+        $desired_display = 1;
+    }
 
     if ( count( $reviews ) > 1 ) {
         shuffle( $reviews );
     }
 
+    $display_count = min( $desired_display, $max_display );
     $selected_reviews = array_slice( $reviews, 0, $display_count );
-    $total_items      = count( $selected_reviews );
 
     $classes = array(
         'sdc-review-carousel',
@@ -1096,6 +1106,20 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
         $text      = isset( $review['text'] ) ? sanitize_textarea_field( $review['text'] ) : '';
         $timestamp = isset( $review['time'] ) ? absint( $review['time'] ) : 0;
 
+        $item_classes = array( 'sdc-review-carousel__item' );
+
+        if ( $index >= $slides_mobile ) {
+            $item_classes[] = 'sdc-review-carousel__item--hidden-mobile';
+        }
+
+        if ( $index >= $slides_tablet ) {
+            $item_classes[] = 'sdc-review-carousel__item--hidden-tablet';
+        }
+
+        if ( $index >= $slides_desktop ) {
+            $item_classes[] = 'sdc-review-carousel__item--hidden-desktop';
+        }
+
         $rating_label = sprintf(
             /* translators: %s: star rating value */
             __( 'Rated %s out of 5', 'sdc-review-carousel' ),
@@ -1108,7 +1132,7 @@ function sdc_rc_render_reviews_carousel_shortcode( $atts ) {
             $date_markup = '<time class="sdc-review-card__date" datetime="' . esc_attr( gmdate( 'c', $timestamp ) ) . '">' . esc_html( date_i18n( get_option( 'date_format' ), $timestamp ) ) . '</time>';
         }
 
-        $items_markup .= '<li class="sdc-review-carousel__item">';
+        $items_markup .= '<li class="' . esc_attr( implode( ' ', array_filter( $item_classes ) ) ) . '">';
         $items_markup .= '<article class="sdc-review-card">';
         $items_markup .= '<header class="sdc-review-card__header">';
         $items_markup .= '<div class="sdc-review-card__rating" aria-label="' . esc_attr( $rating_label ) . '" role="img">' . sdc_rc_get_stars_markup( $rating, 5, $star_color ) . '</div>';
