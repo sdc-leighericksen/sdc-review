@@ -7,7 +7,7 @@ SDC Review Carousel is a lightweight WordPress plugin from [Stoke Design Co](htt
 - Pull your live Google rating, total review count, and recent reviews via the Places API.
 - Cache API responses to respect quota limits while keeping data fresh.
 - Customise star counts, badge/review colours (background, text, meta, dots), horizontal spacing, minimum review rating, slide counts, autoplay delay, and transition speed from the settings page.
-- Responsive carousel with dot navigation that appears on hover/focus, keyboard support, and reduced-motion fallbacks.
+- Responsive carousel with dot navigation that appears on hover/focus, keyboard support, a continuous ticker track, and reduced-motion fallbacks.
 - Backwards-compatible shortcode aliases for legacy integrations.
 
 ## Requirements
@@ -108,6 +108,7 @@ Legacy alias `[sdc_gmb_reviews_carousel]` still maps to the updated carousel out
 
 - Badge and carousel colours (background, text, meta, dots) and spacing are managed via the settings page or shortcode attributes.
 - Target the `.sdc-review-carousel` wrapper or `.sdc-review-card` elements in your theme/custom CSS to tweak spacing, typography, or layout.
+- Use `.sdc-review-carousel__track` (or the existing `.sdc-review-carousel__list`) when you need to control the ticker transform—both host the flex layout for the sliding cards.
 - Dot navigation buttons use the `.sdc-review-carousel__dot` class; feel free to adjust size or colour to suit your brand.
 - The badge uses inline SVG icons, so colours inherit from the accent colour you set.
 
