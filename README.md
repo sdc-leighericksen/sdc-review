@@ -123,6 +123,11 @@ Legacy alias `[sdc_gmb_reviews_carousel]` still maps to the updated carousel out
 - **No stars displayed** – ensure the star colour is a valid hex value and that no aggressive caching plugin is stripping inline styles.
 - **Carousel not advancing** – verify autoplay is enabled (delay above 0) and that the visitor hasn’t enabled “reduce motion” at the OS/browser level.
 
+## Testing
+
+- **Jest** – mock `requestAnimationFrame` to assert that the ticker autoplay pauses on `mouseenter`, resumes on `mouseleave`, and keeps `scrollLeft` within a single loop width after calling `reset()`.
+- **Playwright** – render the shortcode, hover the carousel to confirm the ticker stops, then tab-focus a dot to resume and observe a seamless wrap from the final logical review back to the first without a visible jump.
+
 ## Support
 
 This is an open-source project maintained by [Stoke Design Co](https://stokedesign.co). For customisations or support packages, please get in touch via our website.
