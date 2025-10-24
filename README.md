@@ -75,7 +75,7 @@ Use `[sdc_review_carousel]` to display a responsive slider of recent Google revi
 | `api_key`              | Override the configured API key.                                                            | Saved API key           |
 | `cache_minutes`        | Minutes to cache the Places API response.                                                   | Saved cache duration    |
 | `min_rating`           | Filter out reviews below this rating (0–5, decimal friendly).                               | Saved minimum rating    |
-| `reviews_limit`        | Maximum number of reviews to render (1–8; Google returns up to 8 recent reviews).           | Saved reviews limit     |
+| `reviews_limit`        | Maximum number of reviews to render (1–20; Google returns up to 20 recent reviews when available). | Saved reviews limit     |
 | `slides_desktop`       | Number of cards visible on desktop breakpoints (~960px and up).                              | Saved desktop slides    |
 | `slides_tablet`        | Number of cards visible on tablet breakpoints (~600px and up).                               | Saved tablet slides     |
 | `slides_mobile`        | Number of cards visible below 600px.                                                         | Saved mobile slides     |

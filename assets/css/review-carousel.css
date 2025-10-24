@@ -26,6 +26,10 @@
     display: block;
 }
 
+.sdc-review-carousel__item--hidden-mobile {
+    display: none;
+}
+
 .sdc-review-card {
     height: 100%;
     display: flex;
@@ -96,11 +100,27 @@
     .sdc-review-carousel {
         --sdc-review-current-slides: var(--sdc-review-slides-tablet);
     }
+
+    .sdc-review-carousel__item--hidden-mobile {
+        display: block;
+    }
+
+    .sdc-review-carousel__item--hidden-tablet {
+        display: none;
+    }
 }
 
 @media (min-width: 960px) {
     .sdc-review-carousel {
         --sdc-review-current-slides: var(--sdc-review-slides-desktop);
+    }
+
+    .sdc-review-carousel__item--hidden-tablet {
+        display: block;
+    }
+
+    .sdc-review-carousel__item--hidden-desktop {
+        display: none;
     }
 }
 
